@@ -139,7 +139,7 @@ class RemoteTests(unittest.TestCase):
 
     def test_local_actions_rejected_in_remote_mode(self):
         self.save()
-        for command in [["setup"], ["start"], ["stop"], ["restart"], ["autostart", "on"],
+        for command in [["setup"], ["repair"], ["start"], ["stop"], ["restart"], ["autostart", "on"],
                         ["config"], ["logs"], ["logs-view"], ["login", "codex"], ["auth-start", "codex"]]:
             with self.subTest(command=command), patch.object(omaproxy, "run", side_effect=AssertionError("No local process")):
                 code, result = self.cli(command)
