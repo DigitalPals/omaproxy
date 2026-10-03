@@ -46,6 +46,9 @@ class RemoteTests(unittest.TestCase):
             code, result = self.cli(["connection-save"], self.cfg)
         self.assertEqual(code, 0)
         self.assertTrue(result["connection_changed"])
+        self.assertEqual(result["mode"], "remote")
+        self.assertEqual(result["base_url"], self.cfg["base_url"])
+        self.assertTrue(result["has_api_key"])
         self.assertEqual(self.config.joinpath("settings.json").read_text(), local)
         self.assertEqual((self.config / "connection.json").stat().st_mode & 0o777, 0o600)
         self.assertEqual(request.call_args_list[0].args, (self.cfg["base_url"] + "/v0/management/auth-files", "management-secret"))
@@ -84,6 +87,17 @@ class RemoteTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 omaproxy.connection_save({"base_url": "https://different.example.test"})
             request.assert_not_called()
+
+    def test_explicitly_clear_saved_client_key_keeps_management_access(self):
+        self.save()
+        original_id = omaproxy.connection_id(self.cfg)
+        with patch.object(omaproxy, "request", return_value={"files": []}) as request:
+            result = omaproxy.connection_save({"base_url": self.cfg["base_url"], "clear_api_key": True})
+        request.assert_called_once_with(self.cfg["base_url"] + "/v0/management/auth-files", "management-secret")
+        self.assertEqual(omaproxy.settings()["api_key"], "")
+        self.assertEqual(omaproxy.settings()["management_key"], "management-secret")
+        self.assertFalse(result["has_api_key"])
+        self.assertNotEqual(result["connection_id"], original_id)
 
     def test_management_only_connection_and_secret_allowlist(self):
         self.save(dict(self.cfg, api_key=""))

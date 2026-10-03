@@ -132,6 +132,39 @@ class BackendIntegration(unittest.TestCase):
             finally:
                 omaproxy.api("routing/strategy", "PUT", {"value": "round-robin"})
 
+    def test_remote_connection_uses_real_management_and_client_apis(self):
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(omaproxy, "CONFIG", Path(directory)), \
+             patch.object(omaproxy, "run", side_effect=AssertionError("Remote mode must not invoke local processes")):
+            local = {"port": 18317, "api_key": "local-client", "management_key": "local-management"}
+            omaproxy.private_write(Path(directory) / "settings.json", json.dumps(local))
+            result = omaproxy.connection_save({"base_url": self.base,
+                "management_key": "test-management-key", "api_key": "test-client-key"})
+            self.assertTrue(result["connection_changed"])
+            status = omaproxy.status()
+            self.assertTrue(status["running"])
+            self.assertEqual(status["mode"], "remote")
+            self.assertIn("test-model", status["models"])
+            self.assertEqual(status["accounts"], [])
+            self.assertEqual(omaproxy.quota_snapshot()["quotas"]["accounts"], [])
+            for secret in ("test-management-key", "test-client-key"):
+                self.assertNotIn(secret, json.dumps(status))
+            omaproxy.connection_local()
+            self.assertEqual(omaproxy.settings(), local)
+
+    def test_remote_management_only_and_bad_key_validation(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(omaproxy, "CONFIG", Path(directory)):
+            omaproxy.connection_save({"base_url": self.base, "management_key": "test-management-key"})
+            status = omaproxy.status()
+            self.assertTrue(status["running"])
+            self.assertFalse(status["has_api_key"])
+            self.assertEqual(status["models"], [])
+            before = (Path(directory) / "connection.json").read_text()
+            for payload in ({"management_key": "wrong-management-key"}, {"api_key": "wrong-client-key"}):
+                with self.subTest(payload=payload), self.assertRaises(urllib.error.HTTPError):
+                    omaproxy.connection_save(dict(payload, base_url=self.base))
+                self.assertEqual((Path(directory) / "connection.json").read_text(), before)
+
     def test_streaming_completion(self):
         result = self.call("/v1/chat/completions", {"model": "test-model", "stream": True,
             "messages": [{"role": "user", "content": "Hi"}]}, raw=True)

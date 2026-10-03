@@ -134,6 +134,8 @@ def connection_save(payload):
         value = str(payload.get(key, "")).strip()
         # Blank fields preserve saved keys only for the same server.
         cfg[key] = value or (previous.get(key, "") if previous.get("base_url") == cfg["base_url"] else "")
+        if key == "api_key" and payload.get("clear_api_key") is True:
+            cfg[key] = ""
         if any(ord(c) < 32 or ord(c) > 126 for c in cfg[key]):
             raise ValueError("Keys must contain printable ASCII characters.")
     if not cfg["management_key"]:
@@ -146,6 +148,7 @@ def connection_save(payload):
     for name in ("auth-error.json", "model-error.json"):
         (state_dir(cfg) / name).unlink(missing_ok=True)
     return {"connection_changed": True, "connection_id": connection_id(cfg),
+            "mode": "remote", "base_url": cfg["base_url"], "has_api_key": bool(cfg["api_key"]),
             "message": "Remote connection saved. Accounts and limits come from this server."}
 
 
@@ -153,7 +156,9 @@ def connection_local():
     connection = read_json(CONFIG / "connection.json", {})
     connection["mode"] = "local"
     private_write(CONFIG / "connection.json", json.dumps(connection) + "\n")
-    return {"connection_changed": True, "connection_id": "local", "message": "Local connection selected."}
+    return {"connection_changed": True, "connection_id": "local", "mode": "local",
+            "remote_base_url": connection.get("remote", {}).get("base_url", ""),
+            "message": "Local connection selected."}
 
 
 def account_rows(response):

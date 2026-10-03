@@ -75,6 +75,11 @@ rejected, automatic management requests stop until the connection is tested and
 saved again. Rejected client keys stop model polling without hiding accounts or
 quotas. No keys or remote details belong in GitHub reports.
 
+To remove a saved optional client API key, select **Remove saved client API key**
+and choose **Test and save connection**. Account and quota access keeps using
+the management key; model discovery stops. Blank key fields otherwise preserve
+the saved values for the same server URL.
+
 ## Removal
 
 To remove the integration while retaining credentials:

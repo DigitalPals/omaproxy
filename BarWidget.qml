@@ -32,6 +32,7 @@ Panel {
     property int connectionRevision: 0
     property bool changingConnection: false
     property bool editRemote: false
+    property bool clearRemoteApiKey: false
     readonly property bool remoteConnection: snapshot.mode === "remote"
     property double now: Date.now() / 1000
     readonly property bool busy: action.running
@@ -71,7 +72,9 @@ Panel {
     function receive(result) {
         if (result.error) { noticeError = true; notice = result.error; return }
         if (result.connection_changed) {
-            snapshot = ({configured: false, running: false, accounts: [], models: [], providers: [], connection_id: result.connection_id})
+            snapshot = ({configured: false, running: false, accounts: [], models: [], providers: [], connection_id: result.connection_id,
+                mode: result.mode, base_url: result.base_url || "", remote_base_url: result.remote_base_url || "",
+                has_api_key: !!result.has_api_key})
             quotaData = ({accounts: []})
             auth = ({})
             preferences = ({})
@@ -81,6 +84,7 @@ Panel {
             addingAccount = false
             addingKey = false
             editRemote = false
+            clearRemoteApiKey = false
         }
         if (result.auth !== undefined) {
             var wasWaiting = signingIn
@@ -139,7 +143,7 @@ Panel {
 
     onOpenedChanged: {
         if (opened) { refresh(); refreshQuotas(false); if (snapshot.configured && !remoteConnection && !authPoll.running) authPoll.running = true }
-        else { revealedEmails = ({}); remoteManagementKey.text = ""; remoteApiKey.text = "" }
+        else { revealedEmails = ({}); remoteManagementKey.text = ""; remoteApiKey.text = ""; clearRemoteApiKey = false }
     }
     onPageChanged: { scroll.contentY = 0; if (page === 2 && snapshot.running) perform(["preferences"]) }
     Component.onCompleted: refresh()
@@ -602,19 +606,25 @@ Panel {
                             Hint { text: "Enter the server base URL without /v1. Use HTTPS, or localhost HTTP for an SSH tunnel." }
                             Field { id: remoteUrl; placeholderText: "Server URL, e.g. https://proxy.example.com"; text: root.snapshot.base_url || root.snapshot.remote_base_url || ""; enabled: !root.busy }
                             Field { id: remoteManagementKey; placeholderText: "Management key"; password: true; enabled: !root.busy }
-                            Field { id: remoteApiKey; placeholderText: "Client API key (optional, for models)"; password: true; enabled: !root.busy }
-                            Hint { text: "Blank keys keep saved values for the same URL. The management key enables accounts and quotas; the client key enables model discovery." }
+                            Field { id: remoteApiKey; placeholderText: "Client API key (optional, for models)"; password: true; enabled: !root.busy && !root.clearRemoteApiKey }
+                            ActionButton {
+                                text: "Remove saved client API key"
+                                active: root.clearRemoteApiKey
+                                enabled: !root.busy
+                                onClicked: { root.clearRemoteApiKey = !root.clearRemoteApiKey; remoteApiKey.text = "" }
+                            }
+                            Hint { text: "Blank keys keep saved values for the same URL. The management key enables accounts and quotas; the client key enables model discovery. Select Remove saved client API key and save to use management only." }
                             ActionButton {
                                 text: root.changingConnection ? "Checking…" : "Test and save connection"
                                 enabled: !root.busy && remoteUrl.text.trim() !== ""
                                 onClicked: {
-                                    root.perform(["connection-save"], {base_url: remoteUrl.text, management_key: remoteManagementKey.text, api_key: remoteApiKey.text})
+                                    root.perform(["connection-save"], {base_url: remoteUrl.text, management_key: remoteManagementKey.text, api_key: remoteApiKey.text, clear_api_key: root.clearRemoteApiKey})
                                     remoteManagementKey.text = ""
                                     remoteApiKey.text = ""
                                 }
                             }
                         }
-                        ActionButton { visible: !root.snapshot.configured && !root.editRemote; text: "Set up local proxy"; enabled: !root.busy; onClicked: root.perform(["setup"]) }
+                        ActionButton { visible: !root.snapshot.configured && !root.editRemote && !root.remoteConnection; text: "Set up local proxy"; enabled: !root.busy; onClicked: root.perform(["setup"]) }
                         PanelSeparator { foreground: root.foreground }
                         Label { text: "Display"; font.bold: true }
                         ActionButton {
