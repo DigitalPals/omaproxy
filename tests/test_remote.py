@@ -17,6 +17,53 @@ import quotas
 
 
 class RemoteTests(unittest.TestCase):
+    def test_client_key_removal_is_explicit_and_preserves_management_access(self):
+        self.save()
+        with patch.object(omaproxy, "request", return_value={"files": []}) as request:
+            code, result = self.cli(["connection-save"], {"base_url": self.cfg["base_url"], "clear_api_key": True})
+        self.assertEqual(code, 0)
+        self.assertEqual(request.call_count, 1)
+        self.assertEqual(omaproxy.settings()["api_key"], "")
+        self.assertEqual(omaproxy.settings()["management_key"], "management-secret")
+        self.assertNotEqual(result["connection_id"], omaproxy.connection_id(self.cfg))
+
+    def test_remote_repair_never_touches_local_state(self):
+        self.save()
+        with patch.object(omaproxy, "run") as run:
+            code, result = self.cli(["repair"])
+        self.assertEqual(code, 1)
+        self.assertIn("local proxy", result["error"])
+        run.assert_not_called()
+
+    def test_named_keys_have_separate_registries_for_each_connection(self):
+        sentinel = self.config / "client-keys.json"
+        omaproxy.private_write(sentinel, "local registry remains untouched")
+        keys = {}
+        def request(url, key=None, method="GET", body=None, **kwargs):
+            rows = keys.setdefault(url, ["client-secret"])
+            if method == "PATCH":
+                rows.append(body["new"])
+            return {"api-keys": rows}
+        configs = [self.cfg, dict(self.cfg, base_url="https://second.example.test")]
+        with patch.object(omaproxy, "request", side_effect=request):
+            for cfg in configs:
+                self.save(cfg)
+                code, result = self.cli(["client-create", "editor"])
+                self.assertEqual(code, 0)
+                self.assertTrue(result["client_key"]["active"])
+                self.assertEqual(result["connection_id"], omaproxy.connection_id(cfg))
+                self.assertTrue((omaproxy.state_dir(cfg) / "client-keys.json").exists())
+        self.assertNotEqual(omaproxy.state_dir(configs[0]), omaproxy.state_dir(configs[1]))
+        self.assertEqual(sentinel.read_text(), "local registry remains untouched")
+
+    def test_remote_alerts_use_the_selected_connection_state(self):
+        import quota_alerts
+        self.save()
+        with patch.object(omaproxy, "api", return_value={"files": []}), \
+                patch.object(quota_alerts, "process", return_value={"alert_count": 0}) as process:
+            self.assertEqual(self.cli(["quotas", "--notify"])[0], 0)
+        self.assertEqual(process.call_args.args[1], omaproxy.state_dir(self.cfg))
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

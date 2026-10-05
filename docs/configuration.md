@@ -43,6 +43,8 @@ Supply the server's **management key**. The optional **client API key** enables
 model discovery and copying the client key for coding tools. Choose **Test and
 save connection** to validate access before changing the active connection.
 Blank key fields reuse saved values only when the server URL is unchanged.
+To switch to management-only access, select **Remove saved client API key** and
+then **Test and save connection**. This retains the management key.
 Keys never appear in saved shell settings or status output; input is sent to
 Python over stdin and stored privately in `connection.json`.
 
