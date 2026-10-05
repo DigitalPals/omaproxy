@@ -19,6 +19,16 @@ import quota_alerts
 
 
 class ControlsBridgeTests(unittest.TestCase):
+    def test_pending_update_blocks_mutations_before_network_io(self):
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(bridge, "DATA", Path(temporary)), \
+                patch.object(bridge, "settings", return_value={"port": 18317, "management_key": "fake"}), \
+                patch.object(bridge, "request") as request:
+            (Path(temporary) / "backend-pending").mkdir()
+            with self.assertRaisesRegex(ValueError, "needs recovery"):
+                bridge.api("api-keys", "DELETE")
+            request.assert_not_called()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="omaproxy-controls-")
         self.addCleanup(self.temp.cleanup)

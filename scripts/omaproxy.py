@@ -104,6 +104,8 @@ def api(route, method="GET", body=None, timeout=4):
     cfg = settings()
     if not cfg:
         raise ValueError("Set up the proxy first.")
+    if method != "GET" and (DATA / "backend-pending").exists():
+        raise ValueError("An interrupted backend update needs recovery. Run backend-update or backend-rollback before changing settings or keys.")
     if route.startswith("/"):
         if not route.startswith(("/v0/management/", "/v8/management/")) or "#" in route:
             raise ValueError("Use a supported management API path.")
